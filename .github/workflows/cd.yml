@@ -71,8 +71,6 @@ jobs:
           OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
           OTEL_EXPORTER_OTLP_PROTOCOL: ${{ secrets.OTEL_EXPORTER_OTLP_PROTOCOL }}
           AWS_SERVICE_URL: ${{ secrets.AWS_SERVICE_URL }}
-          SQS_GAME_PURCHASE_REQUESTED: ${{ secrets.SQS_GAME_PURCHASE_REQUESTED }}
-          SQS_GAME_PURCHASE_COMPLETED: ${{ secrets.SQS_GAME_PURCHASE_COMPLETED }}
         run: |
           set -e
           
@@ -95,7 +93,7 @@ jobs:
           fi
           
           mkdir -p k8s/games/processed
-          export FULL_IMAGE MONGO_CONNECTION MONGO_DATABASE KEY_ID KEY_SECRET KEY_TOKEN ACC_ID ELASTIC_API_KEY ELASTIC_CLOUD_ID OTEL_RESOURCE_ATTRIBUTES OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_HEADERS OTEL_EXPORTER_OTLP_PROTOCOL AWS_SERVICE_URL SQS_GAME_PURCHASE_REQUESTED SQS_GAME_PURCHASE_COMPLETED
+          export FULL_IMAGE MONGO_CONNECTION MONGO_DATABASE KEY_ID KEY_SECRET KEY_TOKEN ACC_ID ELASTIC_API_KEY ELASTIC_CLOUD_ID OTEL_RESOURCE_ATTRIBUTES OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_HEADERS OTEL_EXPORTER_OTLP_PROTOCOL AWS_SERVICE_URL
           
           echo "Processando arquivos YAML..."
           if command -v envsubst >/dev/null 2>&1; then
@@ -132,8 +130,6 @@ jobs:
                 -e "s|\${OTEL_EXPORTER_OTLP_HEADERS}|${OTEL_EXPORTER_OTLP_HEADERS}|g" \
                 -e "s|\${OTEL_EXPORTER_OTLP_PROTOCOL}|${OTEL_EXPORTER_OTLP_PROTOCOL}|g" \
                 -e "s|\${AWS_SERVICE_URL}|${AWS_SERVICE_URL}|g" \
-                -e "s|\${SQS_GAME_PURCHASE_REQUESTED}|${SQS_GAME_PURCHASE_REQUESTED}|g" \
-                -e "s|\${SQS_GAME_PURCHASE_COMPLETED}|${SQS_GAME_PURCHASE_COMPLETED}|g" \
                 k8s/secret.yaml > k8s/games/processed/secret.yaml
             sed -e "s|\${FULL_IMAGE}|${FULL_IMAGE}|g" \
                 k8s/deployment.yaml > k8s/games/processed/deployment.yaml
