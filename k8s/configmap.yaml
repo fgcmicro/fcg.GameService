@@ -8,6 +8,8 @@ metadata:
 data:
   AWS__Region: "us-east-1"
   AWS__AccountId: "${ACC_ID}"
+  AWS__SQS__GamePurchaseRequested: "game-purchase-requested"
+  AWS__SQS__GamePurchaseCompleted: "game-purchase-completed"
   PATH_BASE: "/api/games"
   ASPNETCORE_URLS: "http://+:8080"
   ASPNETCORE_HTTP_PORT: "8080"
