@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: games-ingress
+  namespace: games
+  labels:
+    app: games
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.middlewares: games-games-strip@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+  - http:
+      paths:
+      - path: /api/games
+        pathType: Prefix
+        backend:
+          service:
+            name: games-service
+            port:
+              number: 80

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  SOLUTION_FILE: "fcg.GameService.sln"
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.SOLUTION_FILE }}
+
+      - name: Build solution
+        run: dotnet build ${{ env.SOLUTION_FILE }} -c Release --no-restore --verbosity normal
+
+      - name: Run tests
+        run: dotnet test ${{ env.SOLUTION_FILE }} -c Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+        continue-on-error: true
+
+      - name: Publish API
+        run: dotnet publish ./src/fcg.GameService.API/fcg.GameService.API.csproj -c Release -o ./out/api --no-build
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: ./TestResults
+          retention-days: 30
+
+      - name: Upload API artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-artifacts
+          path: ./out/api
+          retention-days: 7

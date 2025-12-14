@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: games-config
+  namespace: games
+  labels:
+    app: games
+data:
+  AWS__Region: "us-east-1"
+  AWS__AccountId: "${ACC_ID}"
+  PATH_BASE: "/api/games"
+  ASPNETCORE_URLS: "http://+:8080"
+  ASPNETCORE_HTTP_PORT: "8080"
+  DOTNET_RUNNING_IN_CONTAINER: "true"
+  DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "false"

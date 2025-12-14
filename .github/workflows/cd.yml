@@ -1,0 +1,660 @@
+name: CD
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'src/**'
+      - 'k8s/**'
+      - '.github/workflows/cd.yml'
+  workflow_dispatch:
+
+env:
+  ECR_REPOSITORY: games-service
+  IMAGE_TAG: latest
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and Push Docker Image
+        id: build-push
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          set -e
+          
+          if [ -z "$ECR_REGISTRY" ]; then
+            echo "ERRO: ECR_REGISTRY não está definido"
+            exit 1
+          fi
+          
+          FULL_IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "Building image: $FULL_IMAGE"
+          
+          docker build -t $FULL_IMAGE .
+          
+          echo "Pushing image to ECR..."
+          docker push $FULL_IMAGE
+          
+          echo "FULL_IMAGE=$FULL_IMAGE" >> $GITHUB_OUTPUT
+          echo "Image $FULL_IMAGE pushed successfully"
+
+      - name: Prepare K8s manifests
+        env:
+          FULL_IMAGE: ${{ steps.build-push.outputs.FULL_IMAGE }}
+          MONGO_CONNECTION: ${{ secrets.GAMES_MONGO_CONNECTION }}
+          MONGO_DATABASE: ${{ secrets.GAMES_MONGO_DATABASE }}
+          KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          KEY_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          KEY_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          ACC_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          ELASTIC_API_KEY: ${{ secrets.ELASTIC_API_KEY }}
+          ELASTIC_CLOUD_ID: ${{ secrets.ELASTIC_CLOUD_ID }}
+          OTEL_RESOURCE_ATTRIBUTES: ${{ secrets.OTEL_RESOURCE_ATTRIBUTES }}
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ secrets.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          OTEL_EXPORTER_OTLP_HEADERS: ${{ secrets.OTEL_EXPORTER_OTLP_HEADERS }}
+          OTEL_EXPORTER_OTLP_PROTOCOL: ${{ secrets.OTEL_EXPORTER_OTLP_PROTOCOL }}
+          AWS_SERVICE_URL: ${{ secrets.AWS_SERVICE_URL }}
+          SQS_GAME_PURCHASE_REQUESTED: ${{ secrets.SQS_GAME_PURCHASE_REQUESTED }}
+          SQS_GAME_PURCHASE_COMPLETED: ${{ secrets.SQS_GAME_PURCHASE_COMPLETED }}
+        run: |
+          set -e
+          
+          echo "Validando variáveis obrigatórias..."
+          if [ -z "$FULL_IMAGE" ]; then
+            echo "ERRO: FULL_IMAGE não está definido"
+            exit 1
+          fi
+          if [ -z "$MONGO_CONNECTION" ]; then
+            echo "ERRO: MONGO_CONNECTION não está definido"
+            exit 1
+          fi
+          if [ -z "$KEY_ID" ] || [ -z "$KEY_SECRET" ] || [ -z "$KEY_TOKEN" ]; then
+            echo "ERRO: Credenciais AWS não estão definidas"
+            exit 1
+          fi
+          if [ -z "$ACC_ID" ]; then
+            echo "ERRO: ACC_ID não está definido"
+            exit 1
+          fi
+          
+          mkdir -p k8s/games/processed
+          export FULL_IMAGE MONGO_CONNECTION MONGO_DATABASE KEY_ID KEY_SECRET KEY_TOKEN ACC_ID ELASTIC_API_KEY ELASTIC_CLOUD_ID OTEL_RESOURCE_ATTRIBUTES OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_HEADERS OTEL_EXPORTER_OTLP_PROTOCOL AWS_SERVICE_URL SQS_GAME_PURCHASE_REQUESTED SQS_GAME_PURCHASE_COMPLETED
+          
+          echo "Processando arquivos YAML..."
+          if command -v envsubst >/dev/null 2>&1; then
+            envsubst < k8s/configmap.yaml > k8s/games/processed/configmap.yaml
+            envsubst < k8s/secret.yaml > k8s/games/processed/secret.yaml
+            envsubst < k8s/deployment.yaml > k8s/games/processed/deployment.yaml
+          else
+            sed -e "s|\${FULL_IMAGE}|${FULL_IMAGE}|g" \
+                -e "s|\${MONGO_CONNECTION}|${MONGO_CONNECTION}|g" \
+                -e "s|\${MONGO_DATABASE}|${MONGO_DATABASE}|g" \
+                -e "s|\${KEY_ID}|${KEY_ID}|g" \
+                -e "s|\${KEY_SECRET}|${KEY_SECRET}|g" \
+                -e "s|\${KEY_TOKEN}|${KEY_TOKEN}|g" \
+                -e "s|\${ACC_ID}|${ACC_ID}|g" \
+                -e "s|\${ELASTIC_API_KEY}|${ELASTIC_API_KEY}|g" \
+                -e "s|\${ELASTIC_CLOUD_ID}|${ELASTIC_CLOUD_ID}|g" \
+                -e "s|\${OTEL_RESOURCE_ATTRIBUTES}|${OTEL_RESOURCE_ATTRIBUTES}|g" \
+                -e "s|\${OTEL_EXPORTER_OTLP_ENDPOINT}|${OTEL_EXPORTER_OTLP_ENDPOINT}|g" \
+                -e "s|\${OTEL_EXPORTER_OTLP_HEADERS}|${OTEL_EXPORTER_OTLP_HEADERS}|g" \
+                -e "s|\${OTEL_EXPORTER_OTLP_PROTOCOL}|${OTEL_EXPORTER_OTLP_PROTOCOL}|g" \
+                -e "s|\${AWS_SERVICE_URL}|${AWS_SERVICE_URL}|g" \
+                -e "s|\${SQS_GAME_PURCHASE_REQUESTED}|${SQS_GAME_PURCHASE_REQUESTED}|g" \
+                -e "s|\${SQS_GAME_PURCHASE_COMPLETED}|${SQS_GAME_PURCHASE_COMPLETED}|g" \
+                k8s/configmap.yaml > k8s/games/processed/configmap.yaml
+            sed -e "s|\${MONGO_CONNECTION}|${MONGO_CONNECTION}|g" \
+                -e "s|\${MONGO_DATABASE}|${MONGO_DATABASE}|g" \
+                -e "s|\${KEY_ID}|${KEY_ID}|g" \
+                -e "s|\${KEY_SECRET}|${KEY_SECRET}|g" \
+                -e "s|\${KEY_TOKEN}|${KEY_TOKEN}|g" \
+                -e "s|\${ELASTIC_API_KEY}|${ELASTIC_API_KEY}|g" \
+                -e "s|\${ELASTIC_CLOUD_ID}|${ELASTIC_CLOUD_ID}|g" \
+                -e "s|\${OTEL_RESOURCE_ATTRIBUTES}|${OTEL_RESOURCE_ATTRIBUTES}|g" \
+                -e "s|\${OTEL_EXPORTER_OTLP_ENDPOINT}|${OTEL_EXPORTER_OTLP_ENDPOINT}|g" \
+                -e "s|\${OTEL_EXPORTER_OTLP_HEADERS}|${OTEL_EXPORTER_OTLP_HEADERS}|g" \
+                -e "s|\${OTEL_EXPORTER_OTLP_PROTOCOL}|${OTEL_EXPORTER_OTLP_PROTOCOL}|g" \
+                -e "s|\${AWS_SERVICE_URL}|${AWS_SERVICE_URL}|g" \
+                -e "s|\${SQS_GAME_PURCHASE_REQUESTED}|${SQS_GAME_PURCHASE_REQUESTED}|g" \
+                -e "s|\${SQS_GAME_PURCHASE_COMPLETED}|${SQS_GAME_PURCHASE_COMPLETED}|g" \
+                k8s/secret.yaml > k8s/games/processed/secret.yaml
+            sed -e "s|\${FULL_IMAGE}|${FULL_IMAGE}|g" \
+                k8s/deployment.yaml > k8s/games/processed/deployment.yaml
+          fi
+          
+          cp k8s/service.yaml k8s/games/processed/service.yaml
+          cp k8s/hpa.yaml k8s/games/processed/hpa.yaml
+          if [ -f k8s/ingress.yaml ]; then
+            cp k8s/ingress.yaml k8s/games/processed/ingress.yaml
+          fi
+          if [ -f k8s/middleware.yaml ]; then
+            cp k8s/middleware.yaml k8s/games/processed/middleware.yaml
+          fi
+          if [ -f k8s/namespace.yaml ]; then
+            cp k8s/namespace.yaml k8s/games/processed/namespace.yaml
+          else
+            echo "Aviso: namespace.yaml não encontrado, será criado automaticamente"
+          fi
+          
+          if [ -f k8s/traefik/service.yaml ]; then
+            echo "📋 Copiando traefik/service.yaml..."
+            cp k8s/traefik/service.yaml k8s/games/processed/traefik-service.yaml
+            if [ ! -f k8s/games/processed/traefik-service.yaml ]; then
+              echo "❌ ERRO: Falha ao copiar traefik/service.yaml"
+              exit 1
+            fi
+            echo "✅ traefik-service.yaml copiado com sucesso"
+          else
+            echo "⚠️  AVISO: k8s/traefik/service.yaml não encontrado"
+          fi
+          
+          if [ -f k8s/traefik/service-backup.yaml ]; then
+            echo "📋 Copiando traefik/service-backup.yaml..."
+            cp k8s/traefik/service-backup.yaml k8s/games/processed/traefik-service-backup.yaml
+            echo "✅ traefik-service-backup.yaml copiado com sucesso"
+          fi
+          
+          if grep -r '\${' k8s/games/processed/*.yaml 2>/dev/null; then
+            echo "ERRO: Variáveis não substituídas encontradas"
+            exit 1
+          fi
+
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      - name: Configure kubectl for EKS
+        run: |
+          aws eks update-kubeconfig \
+            --name ${{ secrets.EKS_CLUSTER_NAME }} \
+            --region us-east-1
+
+      - name: Install Helm
+        run: |
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          helm version
+
+      - name: Install Traefik
+        run: |
+          echo "Verificando se o Traefik já está instalado..."
+          
+          if kubectl get deployment traefik -n kube-system >/dev/null 2>&1 || \
+             kubectl get daemonset traefik -n kube-system >/dev/null 2>&1 || \
+             kubectl get deployment traefik -n traefik >/dev/null 2>&1; then
+            echo "✅ Traefik já está instalado no cluster."
+            kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik 2>/dev/null || \
+            kubectl get pods -n traefik -l app.kubernetes.io/name=traefik 2>/dev/null || true
+          else
+            echo "📦 Traefik não encontrado. Instalando via Helm..."
+            
+            helm repo add traefik https://traefik.github.io/charts
+            helm repo update
+            
+            echo "Instalando Traefik no namespace kube-system..."
+            helm upgrade --install traefik traefik/traefik \
+              --namespace kube-system \
+              --create-namespace \
+              --set service.type=ClusterIP \
+              --set ports.web.port=80 \
+              --set ports.websecure.port=443 \
+              --set additionalArguments[0]=--api.dashboard=false \
+              --set additionalArguments[1]=--api.insecure=false \
+              --wait \
+              --timeout 5m || {
+                echo "⚠️  Erro ao instalar Traefik. Verificando status..."
+                kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik || true
+                exit 1
+              }
+            
+            echo "✅ Traefik instalado com sucesso!"
+            echo "⏳ Aguardando pods ficarem prontos..."
+            sleep 15
+            
+            echo "Status do Traefik:"
+            kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik || true
+          fi
+
+      - name: Verify AWS Load Balancer Controller
+        run: |
+          echo "🔍 Verificando AWS Load Balancer Controller..."
+          
+          if kubectl get deployment -n kube-system aws-load-balancer-controller >/dev/null 2>&1; then
+            echo "✅ AWS Load Balancer Controller encontrado"
+            kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
+          else
+            echo "⚠️  AWS Load Balancer Controller NÃO encontrado"
+            echo ""
+            echo "O EKS moderno (1.24+) usa o controlador de serviço integrado."
+            echo "Se o Load Balancer não for criado, verifique:"
+            echo "1. Permissões IAM do cluster (IRSA ou role do node group)"
+            echo "2. Tags das sub-redes (kubernetes.io/role/elb=1 para públicas)"
+            echo "3. Logs do controlador: kubectl logs -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller"
+          fi
+
+      - name: Setup Traefik CRDs
+        run: |
+          echo "Verificando se o Traefik está instalado no cluster..."
+          
+          if kubectl get deployment traefik -n kube-system >/dev/null 2>&1 || \
+             kubectl get daemonset traefik -n kube-system >/dev/null 2>&1 || \
+             kubectl get deployment traefik -n traefik >/dev/null 2>&1; then
+            echo "Traefik encontrado no cluster."
+            
+            if ! kubectl get crd middlewares.traefik.containo.us >/dev/null 2>&1; then
+              echo "CRDs do Traefik não encontrados. Tentando instalar..."
+              
+              kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v2.11/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml 2>/dev/null || \
+              kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v3.0/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml 2>/dev/null || \
+              echo "⚠️  Não foi possível instalar os CRDs automaticamente."
+              
+              echo "Aguardando CRDs ficarem disponíveis..."
+              sleep 10
+            else
+              echo "✅ CRDs do Traefik já estão instalados."
+            fi
+          else
+            echo "⚠️  Traefik não encontrado no cluster. O middleware será ignorado."
+            echo "Para usar o middleware, instale o Traefik primeiro ou use outro Ingress Controller."
+          fi
+
+      - name: Deploy to EKS
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          AWS_REGION: us-east-1
+        run: |
+          set -e
+          
+          if [ -f k8s/games/processed/namespace.yaml ]; then
+            kubectl apply -f k8s/games/processed/namespace.yaml
+          else
+            kubectl create namespace games --dry-run=client -o yaml | kubectl apply -f -
+          fi
+          
+          if [ -z "$ECR_REGISTRY" ]; then
+            ECR_REGISTRY="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          fi
+          
+          kubectl delete secret ecr-secret -n games 2>/dev/null || true
+          
+          TOKEN=$(aws ecr get-login-password --region $AWS_REGION) || exit 1
+          kubectl create secret docker-registry ecr-secret \
+            --docker-server="$ECR_REGISTRY" \
+            --docker-username=AWS \
+            --docker-password="$TOKEN" \
+            --namespace=games || exit 1
+          
+          CURRENT_IMAGE=$(kubectl get deployment games-deployment -n games -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo "")
+          NEW_IMAGE=$(grep "image:" k8s/games/processed/deployment.yaml | awk '{print $2}' | tr -d '"')
+          
+          CONFIGMAP_CHANGED=false
+          SECRET_CHANGED=false
+          
+          if kubectl get configmap games-config -n games >/dev/null 2>&1; then
+            OLD_CONFIGMAP=$(kubectl get configmap games-config -n games -o yaml | grep -A 100 "^data:" | sort)
+            kubectl apply -f k8s/games/processed/configmap.yaml >/dev/null 2>&1
+            NEW_CONFIGMAP=$(kubectl get configmap games-config -n games -o yaml | grep -A 100 "^data:" | sort)
+            if [ "$OLD_CONFIGMAP" != "$NEW_CONFIGMAP" ]; then
+              CONFIGMAP_CHANGED=true
+              echo "🔄 ConfigMap mudou. Deployment será reiniciado."
+            fi
+          else
+            kubectl apply -f k8s/games/processed/configmap.yaml >/dev/null 2>&1
+            CONFIGMAP_CHANGED=true
+            echo "🆕 ConfigMap criado. Deployment será reiniciado."
+          fi
+          
+          if kubectl get secret games-secret -n games >/dev/null 2>&1; then
+            OLD_SECRET=$(kubectl get secret games-secret -n games -o yaml | grep -A 100 "^data:" | sort)
+            kubectl apply -f k8s/games/processed/secret.yaml >/dev/null 2>&1
+            NEW_SECRET=$(kubectl get secret games-secret -n games -o yaml | grep -A 100 "^data:" | sort)
+            if [ "$OLD_SECRET" != "$NEW_SECRET" ]; then
+              SECRET_CHANGED=true
+              echo "🔄 Secret mudou. Deployment será reiniciado."
+            fi
+          else
+            kubectl apply -f k8s/games/processed/secret.yaml >/dev/null 2>&1
+            SECRET_CHANGED=true
+            echo "🆕 Secret criado. Deployment será reiniciado."
+          fi
+          
+          kubectl apply -f k8s/games/processed/deployment.yaml
+          
+          kubectl apply -f k8s/games/processed/service.yaml
+          kubectl apply -f k8s/games/processed/hpa.yaml
+          
+          if [ -f k8s/games/processed/middleware.yaml ]; then
+            if kubectl get crd middlewares.traefik.containo.us >/dev/null 2>&1; then
+
+              kubectl delete middleware stripprefix -n games --ignore-not-found
+              kubectl delete middleware games-stripprefix -n games --ignore-not-found
+  
+              echo "✅ Aplicando middleware do Traefik..."
+              if kubectl apply -f k8s/games/processed/middleware.yaml; then
+                echo "✅ Middleware aplicado com sucesso!"
+                echo "⏳ Aguardando middleware ficar disponível..."
+                sleep 5
+                
+                if kubectl get middleware games-strip -n games >/dev/null 2>&1; then
+                  echo "✅ Middleware games-strip confirmado no cluster"
+                else
+                  echo "⚠️  Middleware não encontrado após aplicação. Verificando..."
+                  kubectl get middleware -n games
+                fi
+              else
+                echo "⚠️  Erro ao aplicar middleware. Continuando sem ele..."
+              fi
+            else
+              echo "⚠️  CRDs do Traefik não estão disponíveis. Pulando aplicação do middleware."
+              echo "O Ingress funcionará, mas sem o stripPrefix. Configure o path corretamente no Ingress."
+            fi
+          fi
+          
+          if [ -f k8s/games/processed/ingress.yaml ]; then
+            echo "Aplicando Ingress..."
+            if kubectl apply -f k8s/games/processed/ingress.yaml; then
+              echo "✅ Ingress aplicado com sucesso!"
+              echo "⏳ Aguardando Traefik processar o Ingress..."
+              sleep 5
+            else
+              echo "⚠️  Erro ao aplicar Ingress. Verifique se o Ingress Controller está instalado."
+            fi
+          fi
+          
+          if [ -f k8s/games/processed/traefik-service.yaml ]; then
+            echo "🔍 Verificando se o Traefik Service já existe..."
+            EXISTING_SVC=$(kubectl get svc traefik-loadbalancer -n kube-system 2>/dev/null || echo "")
+            
+            if [ -n "$EXISTING_SVC" ]; then
+              echo "✅ Traefik Service já existe. Atualizando sem deletar para preservar o Load Balancer..."
+            else
+              echo "📦 Traefik Service não existe. Criando novo..."
+            fi
+            
+            echo "🔍 Verificando se os pods do Traefik estão disponíveis..."
+            TRAEFIK_PODS=$(kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
+            if [ -z "$TRAEFIK_PODS" ]; then
+              echo "⚠️  AVISO: Nenhum pod do Traefik encontrado com label app.kubernetes.io/name=traefik"
+              echo "Verificando pods do Traefik:"
+              kubectl get pods -n kube-system | grep traefik || echo "Nenhum pod encontrado"
+            else
+              echo "✅ Pods do Traefik encontrados: $TRAEFIK_PODS"
+            fi
+            
+            echo "✅ Aplicando Traefik Service LoadBalancer..."
+            if kubectl apply -f k8s/games/processed/traefik-service.yaml; then
+              echo "✅ Traefik Service aplicado com sucesso!"
+              
+              echo "📋 Verificando detalhes do service..."
+              kubectl get svc traefik-loadbalancer -n kube-system -o yaml | head -30
+              
+              echo "⏳ Aguardando LoadBalancer ser provisionado (pode levar até 2 minutos)..."
+              for i in {1..12}; do
+                sleep 10
+                NLB_HOSTNAME=$(kubectl get svc traefik-loadbalancer -n kube-system -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+                if [ -n "$NLB_HOSTNAME" ]; then
+                  echo "✅ LoadBalancer criado! Hostname: $NLB_HOSTNAME"
+                  break
+                else
+                  echo "⏳ Aguardando... ($i/12)"
+                fi
+              done
+              
+              if [ -z "$NLB_HOSTNAME" ]; then
+                echo "⚠️  LoadBalancer ainda não foi provisionado após 2 minutos."
+                echo "Verificando status do service:"
+                kubectl get svc traefik-loadbalancer -n kube-system
+                echo ""
+                echo "Verificando eventos:"
+                kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep traefik-loadbalancer | tail -10 || echo "Nenhum evento encontrado"
+                echo ""
+                echo "⚠️  Possíveis causas:"
+                echo "1. Permissões IAM insuficientes no cluster EKS"
+                echo "2. Sub-redes sem tags corretas (kubernetes.io/role/elb=1)"
+                echo "3. AWS Load Balancer Controller não instalado ou com problemas"
+                echo "4. Limite de Load Balancers na conta AWS atingido"
+              fi
+              
+              NODE_PORT=$(kubectl get svc traefik-loadbalancer -n kube-system -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}' 2>/dev/null || echo "")
+              if [ -n "$NODE_PORT" ]; then
+                echo "✅ NodePort atribuído: $NODE_PORT"
+                echo "⚠️  IMPORTANTE: Configure o Target Group do API Gateway para usar a porta $NODE_PORT"
+              else
+                echo "⚠️  NodePort ainda não foi atribuído."
+              fi
+            else
+              echo "⚠️  Erro ao aplicar traefik-service.yaml. Tentando service-backup.yaml..."
+              if [ -f k8s/games/processed/traefik-service-backup.yaml ]; then
+                kubectl apply -f k8s/games/processed/traefik-service-backup.yaml
+              else
+                echo "❌ ERRO: Não foi possível aplicar o Traefik Service!"
+                exit 1
+              fi
+            fi
+          elif [ -f k8s/games/processed/traefik-service-backup.yaml ]; then
+            echo "✅ Aplicando Traefik Service (backup)..."
+            kubectl apply -f k8s/games/processed/traefik-service-backup.yaml
+          else
+            echo "⚠️  AVISO: Arquivo traefik-service.yaml não encontrado. O LoadBalancer não será criado."
+            echo "Verifique se o arquivo k8s/traefik/service.yaml existe no repositório."
+          fi
+          
+          SKIP_ROLLOUT=false
+          if [ -n "$CURRENT_IMAGE" ] && [ "$CURRENT_IMAGE" = "$NEW_IMAGE" ] && [ "$CONFIGMAP_CHANGED" = "false" ] && [ "$SECRET_CHANGED" = "false" ]; then
+            READY=$(kubectl get deployment games-deployment -n games -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+            DESIRED=$(kubectl get deployment games-deployment -n games -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "1")
+            if [ "$READY" = "$DESIRED" ] && [ "$READY" != "0" ]; then
+              echo "ℹ️  Deployment já está pronto. Nenhuma mudança detectada."
+              SKIP_ROLLOUT=true
+            fi
+          fi
+          
+          if [ "$SKIP_ROLLOUT" = "false" ]; then
+            if [ -n "$CURRENT_IMAGE" ] && [ "$CURRENT_IMAGE" != "$NEW_IMAGE" ]; then
+              echo "🔄 Imagem mudou. Reiniciando deployment..."
+              kubectl rollout restart deployment/games-deployment -n games
+            elif [ "$CONFIGMAP_CHANGED" = "true" ] || [ "$SECRET_CHANGED" = "true" ]; then
+              echo "🔄 ConfigMap ou Secret mudou. Reiniciando deployment para aplicar mudanças..."
+              kubectl rollout restart deployment/games-deployment -n games
+            else
+              echo "🔄 Aguardando deployment ficar pronto..."
+            fi
+          fi
+          
+          if ! kubectl rollout status deployment/games-deployment -n games --timeout=300s; then
+            echo "ERRO: Rollout falhou ou timeout"
+            echo ""
+            echo "=== Status dos pods ==="
+            kubectl get pods -n games -o wide
+            echo ""
+            echo "=== Descrição do deployment ==="
+            kubectl describe deployment games-deployment -n games
+            echo ""
+            echo "=== Logs dos pods (últimos 50 linhas) ==="
+            for pod in $(kubectl get pods -n games -l app=games -o jsonpath='{.items[*].metadata.name}'); do
+              echo "--- Logs do pod: $pod ---"
+              kubectl logs $pod -n games --tail=50 || echo "Não foi possível obter logs do pod $pod"
+              echo ""
+              echo "--- Descrição do pod: $pod ---"
+              kubectl describe pod $pod -n games | tail -30
+              echo ""
+            done
+            echo ""
+            echo "=== Eventos do namespace ==="
+            kubectl get events -n games --sort-by='.lastTimestamp' | tail -20
+            exit 1
+          fi
+          
+          echo "Deploy concluído com sucesso!"
+
+      - name: Verify Traefik and Load Balancer
+        run: |
+          echo "🔍 Verificando status do Traefik e Load Balancer..."
+          sleep 10
+          
+          echo ""
+          echo "=== 1. TRAEFIK ESTÁ VIVO? ==="
+          TRAEFIK_DEPLOYMENT=$(kubectl get deployment traefik -n kube-system 2>/dev/null || echo "")
+          TRAEFIK_DAEMONSET=$(kubectl get daemonset traefik -n kube-system 2>/dev/null || echo "")
+          
+          if [ -n "$TRAEFIK_DEPLOYMENT" ]; then
+            echo "✅ Traefik Deployment encontrado:"
+            kubectl get deployment traefik -n kube-system
+            echo ""
+            echo "Pods do Traefik:"
+            kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik
+            READY_PODS=$(kubectl get deployment traefik -n kube-system -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+            DESIRED_PODS=$(kubectl get deployment traefik -n kube-system -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "0")
+            if [ "$READY_PODS" = "$DESIRED_PODS" ] && [ "$READY_PODS" != "0" ]; then
+              echo "✅ Traefik está RODANDO ($READY_PODS/$DESIRED_PODS pods prontos)"
+            else
+              echo "⚠️  Traefik NÃO está totalmente pronto ($READY_PODS/$DESIRED_PODS pods)"
+            fi
+          elif [ -n "$TRAEFIK_DAEMONSET" ]; then
+            echo "✅ Traefik DaemonSet encontrado:"
+            kubectl get daemonset traefik -n kube-system
+            echo ""
+            echo "Pods do Traefik:"
+            kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik
+            READY_PODS=$(kubectl get daemonset traefik -n kube-system -o jsonpath='{.status.numberReady}' 2>/dev/null || echo "0")
+            DESIRED_PODS=$(kubectl get daemonset traefik -n kube-system -o jsonpath='{.status.desiredNumberScheduled}' 2>/dev/null || echo "0")
+            if [ "$READY_PODS" = "$DESIRED_PODS" ] && [ "$READY_PODS" != "0" ]; then
+              echo "✅ Traefik está RODANDO ($READY_PODS/$DESIRED_PODS pods prontos)"
+            else
+              echo "⚠️  Traefik NÃO está totalmente pronto ($READY_PODS/$DESIRED_PODS pods)"
+            fi
+          else
+            echo "❌ Traefik NÃO encontrado no cluster!"
+            echo "Verifique se o Traefik está instalado:"
+            echo "  kubectl get all -n kube-system | grep traefik"
+            exit 1
+          fi
+          
+          echo ""
+          echo "=== 2. NODEPORT DO SERVICE ==="
+          TRAEFIK_SVC=$(kubectl get svc traefik-loadbalancer -n kube-system 2>/dev/null || echo "")
+          if [ -z "$TRAEFIK_SVC" ]; then
+            echo "❌ Service traefik-loadbalancer NÃO encontrado!"
+            exit 1
+          fi
+          
+          echo "Service traefik-loadbalancer:"
+          kubectl get svc traefik-loadbalancer -n kube-system
+          echo ""
+          
+          NODE_PORT=$(kubectl get svc traefik-loadbalancer -n kube-system -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}' 2>/dev/null || echo "")
+          if [ -z "$NODE_PORT" ]; then
+            NODE_PORT=$(kubectl get svc traefik-loadbalancer -n kube-system -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
+          fi
+          
+          if [ -z "$NODE_PORT" ]; then
+            echo "⚠️  NodePort não encontrado no service. Verificando detalhes..."
+            kubectl describe svc traefik-loadbalancer -n kube-system | grep -A 10 "Port:"
+            NODE_PORT="N/A"
+          else
+            echo "✅ NodePort atribuído: $NODE_PORT"
+            echo ""
+            echo "⚠️  IMPORTANTE: Configure o Target Group do API Gateway para usar a porta $NODE_PORT"
+          fi
+          
+          echo ""
+          echo "=== 3. STATUS DO LOAD BALANCER ==="
+          NLB_HOSTNAME=$(kubectl get svc traefik-loadbalancer -n kube-system -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+          if [ -n "$NLB_HOSTNAME" ]; then
+            echo "✅ Traefik NLB Hostname: $NLB_HOSTNAME"
+            echo ""
+            echo "Use este hostname para configurar o API Gateway"
+            echo "As rotas devem ser configuradas com o prefixo /api/games"
+            echo ""
+            echo "Verifique na AWS Console (EC2 -> Load Balancers) se o NLB foi criado:"
+            echo "  Nome deve começar com: k8s-kubesystem-traefik"
+          else
+            echo "❌ NLB do Traefik NÃO foi provisionado ainda"
+            echo ""
+            echo "Verificando detalhes do service:"
+            kubectl describe svc traefik-loadbalancer -n kube-system | tail -30
+            echo ""
+            echo "Verificando eventos relacionados:"
+            kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep -i "traefik\|loadbalancer\|nlb" | tail -10 || echo "Nenhum evento encontrado"
+            echo ""
+            echo "🔧 POSSÍVEIS SOLUÇÕES:"
+            echo "1. Verifique permissões IAM do cluster EKS:"
+            echo "   - O cluster precisa de permissões para criar Load Balancers"
+            echo "   - Verifique a role do node group ou IRSA"
+            echo ""
+            echo "2. Verifique tags das sub-redes:"
+            echo "   - Sub-redes públicas devem ter: kubernetes.io/role/elb=1"
+            echo "   - Sub-redes privadas devem ter: kubernetes.io/role/internal-elb=1"
+            echo ""
+            echo "3. Verifique se há limite de Load Balancers na conta AWS"
+            echo ""
+            echo "4. Verifique logs do AWS Load Balancer Controller (se instalado):"
+            echo "   kubectl logs -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller"
+          fi
+          
+          echo ""
+          echo "=== 4. STATUS DO SERVICE GAMES ==="
+          kubectl get svc games-service -n games
+          
+          echo ""
+          echo "=== 5. STATUS DO MIDDLEWARE ==="
+          kubectl get middleware -A
+          kubectl get middleware -n games 2>/dev/null || echo "Middleware não encontrado ou CRD não instalado"
+          if kubectl get middleware games-strip -n games >/dev/null 2>&1; then
+            echo "✅ Middleware games-strip encontrado:"
+            kubectl get middleware games-strip -n games -o yaml
+          else
+            echo "❌ Middleware games-strip NÃO encontrado!"
+          fi
+          
+          echo ""
+          echo "=== 6. VERIFICAÇÃO DO INGRESS ==="
+          INGRESS=$(kubectl get ingress games-ingress -n games 2>/dev/null || echo "")
+          if [ -n "$INGRESS" ]; then
+            echo "✅ Ingress encontrado:"
+            kubectl get ingress games-ingress -n games
+            echo ""
+            echo "Detalhes do Ingress:"
+            kubectl describe ingress games-ingress -n games
+          else
+            echo "❌ Ingress não encontrado!"
+          fi
+          
+          echo ""
+          echo "=== 7. TESTE DE CONECTIVIDADE ==="
+          echo "Verificando se os pods do games-service estão prontos..."
+          kubectl get pods -n games -l app=games
+          
+          echo ""
+          echo "Testando conectividade direta no service (port-forward)..."
+          echo "Para testar manualmente:"
+          echo "  kubectl port-forward -n games svc/games-service 8080:80"
+          echo "  curl http://localhost:8080/"
+          
+          echo ""
+          echo "=== 8. LOGS DO TRAEFIK (últimas 20 linhas) ==="
+          TRAEFIK_POD=$(kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          if [ -n "$TRAEFIK_POD" ]; then
+            echo "Logs do pod Traefik: $TRAEFIK_POD"
+            kubectl logs -n kube-system $TRAEFIK_POD --tail=20 | grep -i "games\|ingress\|middleware" || echo "Nenhum log relevante encontrado"
+          else
+            echo "⚠️  Pod do Traefik não encontrado"
+          fi
