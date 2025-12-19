@@ -13,6 +13,7 @@ using Serilog;
 using Serilog.Enrichers.Span;
 using Serilog.Events;
 using System.Text.Json;
+using Amazon.XRay.Recorder.Handlers.AspNetCore;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
@@ -96,6 +97,9 @@ try
     });
 
     app.UseHttpsRedirection();
+
+    // AWS X-Ray middleware para APM
+    app.UseXRay("fcg-games-service");
 
     app.UseAuthorization();
 

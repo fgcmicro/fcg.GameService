@@ -49,5 +49,37 @@ spec:
           periodSeconds: 5
           timeoutSeconds: 3
           failureThreshold: 5
+      # X-Ray Daemon Sidecar (para AWS Academy Lab - usa credenciais diretamente)
+      - name: xray-daemon
+        image: amazon/aws-xray-daemon:latest
+        ports:
+        - containerPort: 2000
+          protocol: UDP
+        env:
+        - name: AWS_REGION
+          value: "us-east-1"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: games-secret
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: games-secret
+              key: AWS_SECRET_ACCESS_KEY
+        - name: AWS_SESSION_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: games-secret
+              key: AWS_SESSION_TOKEN
+              optional: true
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
       imagePullSecrets:
       - name: ecr-secret

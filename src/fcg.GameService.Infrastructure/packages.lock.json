@@ -2,6 +2,24 @@
   "version": 1,
   "dependencies": {
     "net8.0": {
+      "AWSXRayRecorder.Handlers.AspNetCore": {
+        "type": "Direct",
+        "requested": "[2.13.0, )",
+        "resolved": "2.13.0",
+        "contentHash": "s9w1xopeNQszV8Jj6SQrP3KspequT6D4upQerU935x5dwOGHydrJp5ArIqJ5IbFFkKqfb59GwBbWEqjO+3MBQQ==",
+        "dependencies": {
+          "AWSXRayRecorder.Core": "2.16.0"
+        }
+      },
+      "AWSXRayRecorder.Handlers.System.Net": {
+        "type": "Direct",
+        "requested": "[2.13.0, )",
+        "resolved": "2.13.0",
+        "contentHash": "X7tG9aKo0JpqcAvIF40QnhHzABO7C0HW7k+s2Z+NNWzpP9+r0QEhVjWr7/BW09BKbBNheBmIWcB6zuN4Ygp7xQ==",
+        "dependencies": {
+          "AWSXRayRecorder.Core": "2.16.0"
+        }
+      },
       "Elastic.Clients.Elasticsearch": {
         "type": "Direct",
         "requested": "[9.1.5, )",
@@ -110,6 +128,16 @@
           "OpenTelemetry.Api.ProviderBuilderExtensions": "[1.12.0, 2.0.0)"
         }
       },
+      "Amazon.Lambda.Core": {
+        "type": "Transitive",
+        "resolved": "2.8.0",
+        "contentHash": "mZnqCrLuNvB9T9/bCIcu/7H8HWd3yi6sEDzRE76D9ym06D+CoEfJ/EG4w7FucclvpSXO7ui/MKpzqhEnR2FAVg=="
+      },
+      "Amazon.Lambda.SQSEvents": {
+        "type": "Transitive",
+        "resolved": "2.1.0",
+        "contentHash": "a1xaCIuXDleJ8iRE3vHWWhtPqUiURmoQUS68INMEQmtfHr4wTz837TQZONo4cyubv5sZj78DDrYessZEzgFRGQ=="
+      },
       "AWSSDK.Core": {
         "type": "Transitive",
         "resolved": "4.0.0",
@@ -129,6 +157,16 @@
         "contentHash": "lTtR3M0SWe20408X9VtplsqZuc+0fjyROPJdcHFpcFWjRzg8y2MpZfsUxFe5PXwLfpw/cU+57NkuMAjJOYsAng==",
         "dependencies": {
           "AWSSDK.Core": "[4.0.0, 5.0.0)"
+        }
+      },
+      "AWSXRayRecorder.Core": {
+        "type": "Transitive",
+        "resolved": "2.16.0",
+        "contentHash": "I4BMYX4Fs7SiDHtvKoS/TsRUp2flCrfotJOsYRvvn4+gU1wPjD6LEHkIiLNDSwS9Vbh2784dxeWfdAG7oct5MQ==",
+        "dependencies": {
+          "AWSSDK.Core": "3.3.25.1",
+          "Amazon.Lambda.Core": "2.8.0",
+          "Amazon.Lambda.SQSEvents": "2.1.0"
         }
       },
       "DnsClient": {

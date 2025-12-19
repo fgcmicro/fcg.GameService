@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<IGameLibraryRepository, GameLibraryRepository>();
 
         services.AddOpenTelemetrySettings(configuration);
+        services.AddXRaySettings(configuration);
 
         return services;
     }

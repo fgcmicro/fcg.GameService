@@ -15,3 +15,5 @@ data:
   ASPNETCORE_HTTP_PORT: "8080"
   DOTNET_RUNNING_IN_CONTAINER: "true"
   DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: "false"
+  XRay__ServiceName: "fcg-games-service"
+  XRay__TracingDisabled: "false"

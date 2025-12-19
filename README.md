@@ -154,6 +154,17 @@ Esta aplicação está preparada para utilizar o Serilog para gerar os logs. Par
 Esta aplicação possui OpenTelemetry configurado. Para enviar as métricas, basta adicionar as variáveis de ambiente citadas
 neste documento.
 
+## AWS X-Ray APM
+
+Esta aplicação está configurada com **AWS X-Ray** para Application Performance Monitoring (APM). O X-Ray fornece:
+
+- **Distributed Tracing**: Rastreamento de requisições através de todos os microsserviços
+- **Service Map**: Visualização da arquitetura completa
+- **Performance Analysis**: Identificação de gargalos e análise de latência
+- **Error Tracking**: Rastreamento de erros e falhas
+
+Para configurar o X-Ray na AWS, consulte a documentação completa em [docs/xray-apm-setup.md](./docs/xray-apm-setup.md).
+
 ## Localstack
 
 Para facilitar o teste de algumas funcionalidades desta aplicação, aconselha-se a utilizar o localstack.

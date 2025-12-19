@@ -219,6 +219,24 @@ O sistema utiliza **AWS SQS** via **MassTransit** para comunicação assíncrona
 
 ## Monitoramento e Observabilidade
 
+### AWS X-Ray (APM)
+
+**Todos os microsserviços** estão configurados com AWS X-Ray para Application Performance Monitoring:
+
+- **Games Service**: X-Ray habilitado para distributed tracing
+- **Payments API**: X-Ray habilitado para rastreamento de requisições
+- **Payments Worker**: X-Ray habilitado para rastreamento de processamento assíncrono
+- **Users API**: X-Ray habilitado para rastreamento de autenticação e autorização
+
+**Benefícios do X-Ray**:
+- Distributed tracing através de todos os microsserviços
+- Service map visual da arquitetura
+- Identificação de gargalos e erros
+- Análise de latência por endpoint
+- Integração com CloudWatch para métricas
+
+Para mais detalhes sobre configuração, consulte [xray-apm-setup.md](./xray-apm-setup.md).
+
 ### OpenTelemetry
 
 - **Games Service**: Configurado com OpenTelemetry
