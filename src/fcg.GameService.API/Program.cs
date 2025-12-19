@@ -39,6 +39,7 @@ try
     builder.Services.AddSingleton(typeof(IAppLogger<>), typeof(MicrosoftLogAdapter<>));
 
     builder.Services.AddEndpointsApiExplorer();
+    var pathBase = Environment.GetEnvironmentVariable("PATH_BASE");
     builder.Services.AddSwaggerGen(options =>
     {
         options.SwaggerDoc("v1", new OpenApiInfo
@@ -47,6 +48,14 @@ try
             Version = "v1",
             Description = "Microsserviço responsável pelo controle dos jogos da Fiap Cloud Games."
         });
+        
+        if (!string.IsNullOrEmpty(pathBase))
+        {
+            options.AddServer(new OpenApiServer
+            {
+                Url = pathBase.TrimEnd('/')
+            });
+        }
     });
 
     builder.Services.AddProblemDetails();
@@ -72,10 +81,17 @@ try
 
     WebApplication app = builder.Build();
 
-    app.UseSwagger();
+    app.UseSwagger(c =>
+    {
+        c.RouteTemplate = "swagger/{documentName}/swagger.json";
+    });
+
     app.UseSwaggerUI(options =>
     {
-        options.SwaggerEndpoint("/swagger/v1/swagger.json", "FCG Games v1");
+        var swaggerPath = string.IsNullOrEmpty(pathBase) 
+            ? "./v1/swagger.json" 
+            : $"{pathBase.TrimEnd('/')}/swagger/v1/swagger.json";
+        options.SwaggerEndpoint(swaggerPath, "FCG Games v1");
         options.RoutePrefix = "swagger";
     });
 
