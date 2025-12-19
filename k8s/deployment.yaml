@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: games
-        image: ${FULL_IMAGE}
+        image: ${DOCKER_IMAGE_FULL}
         ports:
         - containerPort: 8080
           name: http
