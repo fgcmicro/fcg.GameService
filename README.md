@@ -10,6 +10,7 @@ Através desta API, será possível pesquisar, cadastrar, excluir e modificar jo
 - [Download](#download)
 - [Banco de dados](#banco-de-dados)
 - [ElasticSearch](#elasticsearch)
+- [Arquitetura e Comunicação Assíncrona](#arquitetura-e-comunicação-assíncrona)
 - [Como rodar o projeto?](#como-rodar-o-projeto)
   - [Via Docker Compose](#via-docker-compose)
 - [Logs](#logs)
@@ -38,6 +39,33 @@ Este projeto utiliza o MongoDB como banco de dados principal.
 
 Este projeto utiliza o ElasticSearch para algumas funcionalidades. Para configurar este serviço, deve ser criado um cluster elastic para
 ser apontado no arquivo .ENV desta aplicação.
+
+## Arquitetura e Comunicação Assíncrona
+
+Este microsserviço faz parte de uma arquitetura de microsserviços orquestrada no Kubernetes com comunicação assíncrona via AWS SQS.
+
+### Documentação Completa
+
+- **[Arquitetura do Sistema](./docs/architecture.md)**: Diagrama completo da arquitetura no Kubernetes, incluindo todos os microsserviços, HPA, ConfigMaps, Secrets e monitoramento.
+- **[Fluxo de Comunicação Assíncrona](./docs/async-communication.md)**: Documentação detalhada do fluxo de mensagens entre os microsserviços, incluindo diagramas de sequência e detalhes técnicos.
+
+### Resumo da Comunicação Assíncrona
+
+Este serviço utiliza **AWS SQS** via **MassTransit** para comunicação assíncrona:
+
+- **Publica**: Eventos `GamePurchaseRequested` na fila `game-purchase-requested` quando uma compra é solicitada
+- **Consome**: Eventos `GamePurchaseCompleted` da fila `game-purchase-completed` para atualizar a biblioteca do usuário após processamento do pagamento
+
+### Fluxo de Compra de Jogo
+
+1. Usuário solicita compra via POST `/api/games/purchase`
+2. Service publica `GamePurchaseRequested` na fila SQS
+3. Retorna resposta imediata (202 Accepted) ao usuário
+4. Payments Worker processa o pagamento de forma assíncrona
+5. Quando concluído, Worker publica `GamePurchaseCompleted`
+6. Este service consome o evento e adiciona o jogo à biblioteca
+
+Veja mais detalhes em [async-communication.md](./docs/async-communication.md).
 
 ## Como rodar o projeto?
 
