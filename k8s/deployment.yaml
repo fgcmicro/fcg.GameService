@@ -15,6 +15,19 @@ spec:
       labels:
         app: games
     spec:
+      # Tolerations para permitir agendamento em nodes com taints (comum após pausar/retomar AWS Academy Lab)
+      tolerations:
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      - key: "node.kubernetes.io/unschedulable"
+        operator: "Exists"
+        effect: "NoSchedule"
       containers:
       - name: games
         image: ${DOCKER_IMAGE_FULL}
